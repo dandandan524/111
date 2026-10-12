@@ -1,0 +1,221 @@
+import time
+import threading
+import sys
+
+# =====================银行管理系统=====================
+# 数据存储字典：key=账号，value=[余额, 密码, 交易流水列表]
+accounts = {
+    123456: [1000, "123123", []]   # 密码改为字符串
+}
+
+# 打印系统标题
+print("===== 欢迎使用银行管理系统 =====")
+
+
+# ========== 加密输入密码：显示为 ### ==========
+try:
+    import msvcrt
+
+    def input_password(prompt="请输入密码："):
+        """加密输入密码，输入的字符显示为 #，支持退格，返回字符串"""
+        print(prompt, end="", flush=True)
+        pwd_chars = []
+        while True:
+            ch = msvcrt.getch()
+            if ch == b'\r':       # 回车，结束
+                print()
+                break
+            elif ch == b'\x08':   # 退格
+                if pwd_chars:
+                    pwd_chars.pop()
+                    print('\b \b', end="", flush=True)
+            elif ch == b'\x03':   # Ctrl+C
+                raise KeyboardInterrupt
+            else:
+                pwd_chars.append(ch.decode())
+                print('#', end="", flush=True)
+        return ''.join(pwd_chars)
+
+except ImportError:
+    import getpass
+    def input_password(prompt="请输入密码："):
+        return getpass.getpass(prompt)
+
+
+# ========== 设置密码：输入两次并确认 ==========
+def set_password():
+    """设置密码，要求输入两次并确认一致，返回最终密码字符串"""
+    while True:
+        pwd1 = input_password("请设置密码：")
+        if len(pwd1) == 0:
+            print("密码不能为空！")
+            continue
+        pwd2 = input_password("请确认密码：")
+        if pwd1 == pwd2:
+            print("密码设置成功！")
+            return pwd1
+        else:
+            print("两次输入的密码不一致，请重新设置！")
+
+
+# ========== 退出确认界面（5秒倒计时，默认不退出）==========
+def exit_menu():
+    print("\n" + "=" * 35)
+    print("          退 出 界 面")
+    print("=" * 35)
+    print("  1. 退出当前账号并切换账号")
+    print("  2. 彻底退出系统")
+    print("  3. 不退出，返回主菜单")
+    print("-" * 35)
+    print("  ⚠ 5 秒后将自动选择【3. 不退出】")
+    print("=" * 35)
+
+    result = {"choice": "3"}
+
+    def _get_input():
+        try:
+            c = input("请输入选择（1/2/3）：").strip()
+            if c in ("1", "2", "3"):
+                result["choice"] = c
+        except:
+            pass
+
+    t = threading.Thread(target=_get_input, daemon=True)
+    t.start()
+    t.join(timeout=5)
+
+    if result["choice"] == "1":
+        return "switch"
+    elif result["choice"] == "2":
+        return "quit"
+    else:
+        if t.is_alive():
+            print("\n（超时未操作，自动选择：不退出，返回主菜单）")
+        return "back"
+
+
+# ========== 最外层：账号会话循环 ==========
+while True:
+
+    # ----------------------登录&注册循环----------------------
+    while True:
+        count2 = int(input("请输入您的账号："))
+        if count2 not in accounts:
+            print("账号错误，账号不存在, 是否重新输入(1)或注册(2)?")
+            choice = int(input("请输入您的选择："))
+            if choice == 1:
+                continue
+            elif choice == 2:
+                new_account = int(input("请输入您要注册的新账号："))
+                if new_account in accounts:
+                    print("该账号已被注册！注册失败，请重新来。")
+                    continue
+                # 改动：用 set_password() 设置密码，两次确认
+                new_pwd = set_password()
+                accounts[new_account] = [0, new_pwd, []]
+                print("注册成功！已自动登录该账号")
+                count2 = new_account
+                break
+            else:
+                print("您的选择有误，请重新输入")
+        else:
+            # 改动：用 input_password() 加密输入密码
+            pwd_input = input_password("请输入账号密码：")
+            if pwd_input == accounts[count2][1]:
+                print("账号正确，登录成功")
+                break
+            else:
+                print("密码错误，请重新输入账号！")
+
+    # 提取当前登录用户的信息
+    money = accounts[count2][0]
+    pwd = accounts[count2][1]
+    record_list = accounts[count2][2]
+
+    # ----------------------业务操作主循环----------------------
+    while True:
+        print("\n请选择你接下来的操作选项")
+        print("1. 查询余额")
+        print("2. 存款")
+        print("3. 取款")
+        print("4. 转账")
+        print("5. 修改密码")
+        print("6. 查看交易流水")
+        print("7. 退出")
+        op = int(input("请输入您的选择："))
+
+        if op == 1:
+            print("您的余额为：", money)
+
+        elif op == 2:
+            save_money = int(input("请输入您的存款金额："))
+            if save_money <= 0:
+                print("存款金额必须大于0！")
+            else:
+                money += save_money
+                accounts[count2][0] = money
+                record_list.append(f"存款：+{save_money}元")
+                print("存款成功，您的余额为：", money)
+
+        elif op == 3:
+            money2 = int(input("请输入您的取款金额："))
+            if money2 <= 0:
+                print("取款金额必须大于0！")
+            elif money2 > money:
+                print("您的余额不足，取款失败！")
+            else:
+                money -= money2
+                accounts[count2][0] = money
+                record_list.append(f"取款：-{money2}元")
+                print("取款%d成功，余额为%d" % (money2, money))
+
+        elif op == 4:
+            target_acc = int(input("请输入收款账号："))
+            if target_acc not in accounts:
+                print("收款账号不存在！转账失败")
+            else:
+                trans_money = int(input("请输入转账金额："))
+                if trans_money <= 0:
+                    print("转账金额必须大于0！")
+                elif trans_money > money:
+                    print("余额不足，转账失败！")
+                else:
+                    money -= trans_money
+                    accounts[count2][0] = money
+                    accounts[target_acc][0] += trans_money
+                    accounts[target_acc][2].append(f"收到转账：+{trans_money}元，来自账号{count2}")
+                    record_list.append(f"转出：-{trans_money}元，转给账号{target_acc}")
+                    print(f"转账成功！已向{target_acc}转出{trans_money}元，当前余额：{money}")
+
+        elif op == 5:
+            # 改动：原密码加密输入，新密码两次确认
+            old_pwd = input_password("请输入原密码：")
+            if old_pwd == pwd:
+                new_pwd2 = set_password()
+                accounts[count2][1] = new_pwd2
+                pwd = new_pwd2
+                print("密码修改成功！")
+            else:
+                print("原密码错误，修改失败！")
+
+        elif op == 6:
+            print("\n====交易流水记录====")
+            if len(record_list) == 0:
+                print("暂无交易记录")
+            else:
+                for item in record_list:
+                    print(item)
+
+        elif op == 7:
+            action = exit_menu()
+            if action == "switch":
+                print(f"\n账号 {count2} 已退出，请登录另一个账号。")
+                break
+            elif action == "quit":
+                print("\n谢谢使用银行管理系统，再见！")
+                exit()
+            else:
+                continue
+
+        else:
+            print("您的选择有误，请重新输入")
